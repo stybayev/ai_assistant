@@ -1,6 +1,6 @@
-# AI Assistant (free track)
+# AI Assistant
 
-Учебный проект: локальный RAG-ассистент по документации [Ollama](https://ollama.com).
+Локальный RAG-ассистент по документации [Ollama](https://ollama.com).
 Всё работает офлайн — LLM крутится в Ollama, эмбеддинги считаются через `sentence-transformers`, поиск — через FAISS.
 
 ## Структура
