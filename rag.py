@@ -9,6 +9,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+import requests
 
 import faiss
 import numpy as np
@@ -16,6 +17,20 @@ from sentence_transformers import SentenceTransformer
 
 EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DOCS_DIR = Path("docs")
+OLLAMA_URL = "http://localhost:11434"
+LLM_MODEL = "qwen2.5:1.5b"
+PROMPT_TEMPLATE = """Ты ассистент по документации Ollama.
+Отвечай на вопрос пользователя, опираясь только на приведённые ниже фрагменты документации.
+Если ответа во фрагментах нет - честно скажи, что не знаешь.
+Ответ давай на русском языке.
+В конце ответа на отдельной строке укажи источник в формате: Источник: <имя файла>.
+
+Фрагменты документации:
+{context}
+
+Вопрос пользователя: {question}
+
+Ответ:"""
 
 
 def chunk_text(text: str, max_chars: int = 800, min_chars: int = 50) -> list[str]:
@@ -80,9 +95,9 @@ def load_embed_model(name: str = EMBED_MODEL) -> SentenceTransformer:
 
 
 def embed_texts(
-    texts: list[str],
-    embed_model: SentenceTransformer,
-    show_progress_bar: bool = False,
+        texts: list[str],
+        embed_model: SentenceTransformer,
+        show_progress_bar: bool = False,
 ) -> np.ndarray:
     """Считает нормализованные эмбеддинги: матрица (N, 384) типа float32."""
     return embed_model.encode(
@@ -134,3 +149,30 @@ def vector_search(rag: RagIndex, question: str, top_k: int = 3) -> list[dict]:
             "score": float(score),
         })
     return results
+
+
+def generate_answer(prompt: str) -> str:
+    """Отправляет промпт в Ollama и возвращает сгенерированный ответ."""
+
+    response = requests.post(
+        f"{OLLAMA_URL}/api/generate",
+        json={
+            "model": LLM_MODEL,
+            "prompt": prompt,
+            "stream": False,
+        },
+        timeout=120,
+    )
+    response.raise_for_status()
+    data = response.json()
+
+    return data["response"].strip()
+
+
+def build_prompt(question: str, retrieved: list[dict]) -> str:
+    """Собирает промпт из системной инструкции, контекста и вопроса."""
+    context_parts = []
+    for r in retrieved:
+        context_parts.append(f"[файл: {r['source']}]\n{r['text']}")
+    context = "\n\n---\n\n".join(context_parts)
+    return PROMPT_TEMPLATE.format(context=context, question=question)
